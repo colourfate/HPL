@@ -1,0 +1,2 @@
+Removed Pin From Net: NetName=VOUT Pin=P2-3
+Added Pin To Net: NetName=VOUT Pin=P2-1

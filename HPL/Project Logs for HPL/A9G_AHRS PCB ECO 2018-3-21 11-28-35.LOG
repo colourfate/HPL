@@ -1,0 +1,16 @@
+Removed Pin From Net: NetName=VUSB Pin=P3-1
+Removed Pin From Net: NetName=ADC1 Pin=P3-2
+Removed Pin From Net: NetName=HST_TX Pin=P3-3
+Removed Pin From Net: NetName=TX1 Pin=P3-4
+Removed Pin From Net: NetName=HST_RX Pin=P3-5
+Removed Pin From Net: NetName=RX1 Pin=P3-6
+Removed Pin From Net: NetName=GND Pin=P3-7
+Removed Pin From Net: NetName=VUSB_DET Pin=P3-8
+Added Pin To Net: NetName=ADC1 Pin=P3-1
+Added Pin To Net: NetName=VUSB Pin=P3-2
+Added Pin To Net: NetName=TX1 Pin=P3-3
+Added Pin To Net: NetName=HST_TX Pin=P3-4
+Added Pin To Net: NetName=RX1 Pin=P3-5
+Added Pin To Net: NetName=HST_RX Pin=P3-6
+Added Pin To Net: NetName=VUSB_DET Pin=P3-7
+Added Pin To Net: NetName=GND Pin=P3-8

@@ -1,0 +1,12 @@
+Board Information Report
+Filename     : D:\Workspace\AD\Project\HPL\A9G_AHRS.PcbDoc
+Date         : 2018/3/22
+Time         : 9:34:43
+Time Elapsed : 00:00:00
+
+Routing Information
+    Routing completion, 100.00%
+    Connections, 88
+    Connections routed, 88
+    Connections remaining, 0
+count : 4

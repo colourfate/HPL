@@ -1,0 +1,20 @@
+Removed Pin From Net: NetName=HST_TX Pin=P3-2
+Removed Pin From Net: NetName=HST_RX Pin=P3-3
+Removed Pin From Net: NetName=GND Pin=P3-4
+Removed Pin From Net: NetName=TX1 Pin=P4-1
+Removed Pin From Net: NetName=RX1 Pin=P4-2
+Removed Member From Class: ClassName=A9G_AHRS Member=P4
+Change Component DesignItemId : Designator=P3 Old DesignItemId=Header 4 New DesignItemId=Header 4X2
+Change Component Footprint: Designator=P3 Old Footprint=HDR1X4 New Footprint=HDR2X4
+Change Component Comment : Designator=P3 Old Comment=Header 4 New Comment=Header 4X2
+Added Pin To Net: NetName=HST_TX Pin=P3-3
+Added Pin To Net: NetName=TX1 Pin=P3-4
+Added Pin To Net: NetName=HST_RX Pin=P3-5
+Added Pin To Net: NetName=RX1 Pin=P3-6
+Added Pin To Net: NetName=GND Pin=P3-7
+Added Pin To Net: NetName=ADC1 Pin=P3-2
+Added Pin To Net: NetName=ADC1 Pin=U1-16
+Added Net: Name=ADC1
+Added Pin To Net: NetName=VUSB_DET Pin=P3-8
+Added Pin To Net: NetName=VUSB_DET Pin=U1-17
+Added Net: Name=VUSB_DET
