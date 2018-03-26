@@ -1,0 +1,329 @@
+#include <string.h>
+#include <stdio.h>
+#include <api_os.h>
+#include <api_gps.h>
+#include <api_event.h>
+#include <api_hal_uart.h>
+#include <api_debug.h>
+#include "buffer.h"
+#include "gps_parse.h"
+
+#include <api_socket.h>
+#include <api_network.h>
+
+/*********************************************************************/
+/////////////////////////socket configuration////////////////////////
+// edit ip address and port
+// (you can get ip and port from online tcp debug tool: http://tt.ai-thinker.com:8000/ttcloud)
+#define SERVER_IP   "122.114.122.174"
+#define SERVER_PORT 46244
+
+#define DNS_DOMAIN  "www.neucrack.com"
+#define RECEIVE_BUFFER_MAX_LENGTH 200
+/*********************************************************************/
+
+#define SOCKET_TASK_STACK_SIZE    (2048 * 2)
+#define SOCKET_TASK_PRIORITY      0
+#define SOCKET_TASK_NAME          "Socket Test Task"
+
+static HANDLE socketTaskHandle = NULL;
+
+int socketFd = -1;
+int socketFd2 = -1;
+uint8_t buffer[RECEIVE_BUFFER_MAX_LENGTH];
+int receivedDataCount = -1;
+/*********************************************************************/
+
+#define GPS_TASK_STACK_SIZE    (2048 * 2)
+#define GPS_TASK_PRIORITY      0
+#define GPS_TASK_NAME          "GPS Test Task"
+
+static HANDLE gpsTaskHandle = NULL;
+
+
+#define GPS_DATA_BUFFER_MAX_LENGTH 2048
+
+Buffer_t gpsNmeaBuffer;
+uint8_t  gpsDataBuffer[GPS_DATA_BUFFER_MAX_LENGTH];
+uint8_t tmp[1024];
+
+/****************************** APP ***********************************/
+#define MAIN_TASK_STACK_SIZE    (2048 * 2)
+#define MAIN_TASK_PRIORITY      0
+#define MAIN_TASK_NAME          "Send GPS to server"
+
+static HANDLE mainTaskHandle = NULL;
+
+struct share_date{
+	uint8_t ready;
+	int data;
+	void *p_data;
+} socket_status;
+
+static char *gps_data;
+
+/**********************************************************************/
+
+void SocketEventDispatch(API_Event_t* pEvent)
+{
+    switch(pEvent->id)
+    {
+        case API_EVENT_ID_NO_SIMCARD:
+            Trace(10,"!!NO SIM CARD%d!!!!",pEvent->param1);
+            break;
+
+        case API_EVENT_ID_NETWORK_REGISTERED_HOME:
+        case API_EVENT_ID_NETWORK_REGISTERED_ROAMING:
+            Trace(2,"network register success");
+            Network_StartAttach();
+            break;
+
+        case API_EVENT_ID_NETWORK_ATTACHED:
+            Trace(2,"network attach success");
+            Network_PDP_Context_t context = {
+                .apn        ="cmnet",
+                .userName   = ""    ,
+                .userPasswd = ""
+            };
+            Network_StartActive(context);
+            break;
+
+        case API_EVENT_ID_NETWORK_ACTIVATED:
+            Trace(2,"network activate success");
+            //Start DNS test
+            memset(buffer,0,sizeof(buffer));
+            DNS_Status_t dnsRet = DNS_GetHostByName(DNS_DOMAIN,buffer);
+            if(dnsRet == DNS_STATUS_OK)
+            {
+                Trace(2,"DNS get ip address from domain success(return),domain:%s,ip:%s",DNS_DOMAIN,buffer);
+            }
+            else if(dnsRet == DNS_STATUS_ERROR)
+            {
+                Trace(2,"DNS get ip address error(return)!!!");
+            }
+            //Start connect tcp server
+            socketFd = Socket_TcpipConnect(TCP,SERVER_IP,SERVER_PORT);
+            Trace(2,"connect tcp server,socketFd:%d",socketFd);
+            break;
+
+        case API_EVENT_ID_SOCKET_CONNECTED:
+            Socket_TcpipWrite(pEvent->param1,"hello...test string\n",strlen("hello...test string\n"));
+            Trace(2,"socket %d send %d bytes data to server:%s",pEvent->param1, strlen("hello...test string\n"),"hello...test string\n");
+			// set the socket status to ready
+			//socket_status.ready = 1;
+			break;
+
+        case API_EVENT_ID_SOCKET_SENT:
+        {
+            int fd = pEvent->param1;
+            Trace(2,"socket %d send data complete",fd);
+            break;
+        }
+        case API_EVENT_ID_SOCKET_RECEIVED:
+        {
+            int fd = pEvent->param1;
+            int length = pEvent->param2>RECEIVE_BUFFER_MAX_LENGTH?RECEIVE_BUFFER_MAX_LENGTH:pEvent->param2;
+            memset(buffer,0,sizeof(buffer));
+            length = Socket_TcpipRead(fd,buffer,length);
+            Trace(2,"socket %d received %d bytes data:%s",fd,length,buffer);
+            break;
+        }
+        case API_EVENT_ID_SOCKET_CLOSED:
+        {
+            int fd = pEvent->param1;
+            Trace(2,"socket %d closed",fd);
+			socketFd = -1;
+            break;
+        }
+        case API_EVENT_ID_SOCKET_ERROR:
+        {
+            int fd = pEvent->param1;
+            Trace(2,"socket %d error occurred,cause:%d",fd,pEvent->param2);
+			socketFd = -1;
+            break;
+        }
+        case API_EVENT_ID_DNS_SUCCESS:
+            Trace(2,"DNS get ip address from domain success(event),domain:%s,ip:%s",pEvent->pParam1,pEvent->pParam2);
+            break;
+
+        case API_EVENT_ID_DNS_ERROR:
+            Trace(2,"DNS get ip address error(event)!!!");
+			socketFd = -1;
+            break;
+
+        default:
+            break;
+    }
+}
+
+
+void Init()
+{
+    receivedDataCount = 0;
+}
+
+// the socket process
+void socket_MainTask(void *pData)
+{
+    API_Event_t* event=NULL;
+
+    // Network_SetStatusChangedCallback(OnNetworkStatusChanged);
+
+    Init();
+
+    while(1)
+    {
+        if(OS_WaitEvent(socketTaskHandle, (void**)&event, OS_TIME_OUT_WAIT_FOREVER))
+        {
+			Trace(1,"socket task\n");
+            SocketEventDispatch(event);
+            OS_Free(event->pParam1);
+            OS_Free(event->pParam2);
+            OS_Free(event);
+        }
+    }
+}
+
+
+void GpsUpdate()
+{
+    int32_t index = Buffer_Query(&gpsNmeaBuffer,"$GNVTG",strlen("$GNVTG"),Buffer_StartPostion(&gpsNmeaBuffer));
+    if(index >= 0)
+    {
+        // Trace(1,"find $GNVTG");
+        index = Buffer_Query(&gpsNmeaBuffer,"\r\n",strlen("\r\n"),index);
+        if(index >= 0)
+        {
+            Trace(1,"find complete GPS frame");
+            
+            memset(tmp,0,sizeof(tmp));
+            uint32_t len = Buffer_Size2(&gpsNmeaBuffer,index)+1;
+            Trace(1,"frame len:%d",len);
+            if(!Buffer_Gets(&gpsNmeaBuffer,tmp,len))
+            {
+                Trace(1,"get data from buffer fail");
+                return;
+            }
+            GPS_Parse(tmp);
+        }
+    }
+}
+
+
+// const uint8_t nmea[]="$GNGGA,000021.263,2228.7216,N,11345.5625,E,0,0,,153.3,M,-3.3,M,,*4E\r\n$GPGSA,A,1,,,,,,,,,,,,,,,*1E\r\n$BDGSA,A,1,,,,,,,,,,,,,,,*0F\r\n$GPGSV,1,1,00*79\r\n$BDGSV,1,1,00*68\r\n$GNRMC,000021.263,V,2228.7216,N,11345.5625,E,0.000,0.00,060180,,,N*5D\r\n$GNVTG,0.00,T,,M,0.000,N,0.000,K,N*2C\r\n";
+
+void GPSEventDispatch(API_Event_t* pEvent)
+{
+    static uint8_t flag = 0;
+    switch(pEvent->id)
+    {
+        case API_EVENT_ID_GPS_UART_RECEIVED:
+            // Trace(1,"received GPS data,length:%d, data:%s,flag:%d",pEvent->param1,pEvent->pParam1,flag);
+            if(flag)
+            {
+                Buffer_Puts(&gpsNmeaBuffer,pEvent->pParam1,pEvent->param1);
+                GpsUpdate();
+            }
+            break;
+        case API_EVENT_ID_UART_RECEIVED:
+            if(pEvent->param1 == UART1)
+            {
+                uint8_t data[pEvent->param2+1];
+                data[pEvent->param2] = 0;
+                memcpy(data,pEvent->pParam1,pEvent->param2);
+                Trace(1,"uart received data,length:%d,data:%s",pEvent->param2,data);
+            }
+            break;
+        case API_EVENT_ID_NETWORK_REGISTERED_HOME:
+        case API_EVENT_ID_NETWORK_REGISTERED_ROAMING:
+            Trace(1,"register success");
+            flag = 1;
+            break;
+        default:
+            break;
+    }
+}
+
+
+void gps_testTask(void *pData)
+{
+    GPS_Information_t* gpsInfo = Gps_GetInfo();
+    uint8_t strTmp[100];
+	uint8_t length = 0;
+
+    while(1)
+    {
+        UART_Write(UART1,tmp,strlen(tmp));
+
+        memset(strTmp,0,sizeof(strTmp));
+        Trace(1,"GPS fix:%d, BDS fix:%d, Latitude:%s, Longitude:%s",
+			gpsInfo->fixGPS, gpsInfo->fixBDS, gpsInfo->latitude, gpsInfo->longitude);
+		
+		// socketFd is set in API_EVENT_ID_NETWORK_ACTIVATED
+		if(socketFd != -1){
+			length = sprintf(gps_data, "GPS fix:%d, BDS fix:%d, Latitude:%s, Longitude:%s"
+				,gpsInfo->fixGPS, gpsInfo->fixBDS, gpsInfo->latitude, gpsInfo->longitude);
+			Socket_TcpipWrite(socketFd, gps_data, length);
+			Trace(1, "send gps data to server\n");
+		}
+		OS_Sleep(5000);
+    }
+}
+
+
+// the gps process
+void gps_MainTask(void *pData)
+{
+    API_Event_t* event=NULL;
+
+    GPS_Open(NULL);
+    UART_Config_t config = {
+        .baudRate = UART_BAUD_RATE_115200,
+        .dataBits = UART_DATA_BITS_8,
+        .stopBits = UART_STOP_BITS_1,
+        .parity   = UART_PARITY_NONE,
+        .rxCallback = NULL,
+        .useEvent   = true
+    };
+    UART_Init(UART1,config);
+    Buffer_Init(&gpsNmeaBuffer,gpsDataBuffer,GPS_DATA_BUFFER_MAX_LENGTH);
+
+    OS_CreateTask(gps_testTask,
+            NULL, NULL, GPS_TASK_STACK_SIZE, GPS_TASK_PRIORITY, 0, 0, GPS_TASK_NAME);
+    while(1)
+    {
+        if(OS_WaitEvent(gpsTaskHandle, (void**)&event, OS_TIME_OUT_WAIT_FOREVER))
+        {
+            GPSEventDispatch(event);
+            OS_Free(event->pParam1);
+            OS_Free(event->pParam2);
+            OS_Free(event);
+        }
+    }
+}
+
+
+// The name of entry fun must be 'xxx_MainTask', the 'xxx' is fold name
+void app_Main(void)
+{
+	//socket_status.ready = 0;
+	//socket_status.p_data = NULL;
+	//socket_status.data = 0;
+	gps_data = NULL;
+
+	/*
+	gpsTaskHandle = OS_CreateTask(gps_MainTask,
+        NULL, NULL, GPS_TASK_STACK_SIZE, GPS_TASK_PRIORITY, 0, 0, GPS_TASK_NAME);
+    OS_SetUserMainHandle(&gpsTaskHandle);
+	
+    socketTaskHandle = OS_CreateTask(socket_MainTask,
+        NULL, NULL, SOCKET_TASK_STACK_SIZE, SOCKET_TASK_PRIORITY, 0, 0, SOCKET_TASK_NAME);
+    OS_SetUserMainHandle(&socketTaskHandle);
+    */
+
+	mainTaskHandle = OS_CreateTask(app_MainTask,
+        NULL, NULL, MAIN_TASK_STACK_SIZE, MAIN_TASK_PRIORITY, 0, 0, MAIN_TASK_NAME);
+	// Listen the event of Task. A Main fun has only a Handle, named UserHandle
+    OS_SetUserMainHandle(&mainTaskHandle);
+}
+
