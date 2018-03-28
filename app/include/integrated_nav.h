@@ -11,14 +11,14 @@
 #define EST_BUF_SIZE 40
 #define MIN_VALID_W 0.00001f
 
-#define PARAMS_W_XY_P 
-#define PARAMS_W_XY_V
-#define PARAMS_W_ACC_BIAS
-#define PARAMS_W_XY_RES_V
+#define PARAMS_W_XY_P 1
+#define PARAMS_W_XY_V 1
+#define PARAMS_W_ACC_BIAS 1
+#define PARAMS_W_XY_RES_V 1
 
-#define min(a,b) (a<b ? a : b)
-#define max(a,b) (a>b ? a : b)
 void position_estimator_testTask(void *pData);
+int isfinite(float v);
+
 
 
 #endif

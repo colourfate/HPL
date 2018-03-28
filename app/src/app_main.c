@@ -1,16 +1,19 @@
 #include <string.h>
 #include <stdio.h>
+
 #include <api_os.h>
 #include <api_gps.h>
 #include <api_event.h>
 #include <api_hal_uart.h>
 #include <api_debug.h>
+#include <api_socket.h>
+#include <api_network.h>
+#include <api_hal_i2c.h>
+
 #include "buffer.h"
 #include "gps_parse.h"
 #include "integrated_nav.h"
-
-#include <api_socket.h>
-#include <api_network.h>
+#include "JY901_i2c.h"
 
 /*********************************************************************/
 /////////////////////////socket configuration////////////////////////
@@ -230,6 +233,7 @@ void app_MainTask(void *pData)
 
 	/**************************************************************/
 	// init socket
+	/*
 	Init();
 	// wait socket to connect
 	while(socketFd == -1)
@@ -242,29 +246,24 @@ void app_MainTask(void *pData)
             OS_Free(event);
         }
     }
+    */
 	/**************************************************************/
 	// init GPS
     GPS_Open(NULL);
-	/*
-    UART_Config_t config = {
-        .baudRate = UART_BAUD_RATE_115200,
-        .dataBits = UART_DATA_BITS_8,
-        .stopBits = UART_STOP_BITS_1,
-        .parity   = UART_PARITY_NONE,
-        .rxCallback = NULL,
-        .useEvent   = true
-    };
-    UART_Init(UART1,config);
-    */
     Buffer_Init(&gpsNmeaBuffer,gpsDataBuffer,GPS_DATA_BUFFER_MAX_LENGTH);
 	// send data
-    OS_CreateTask(gps_testTask,
-            NULL, NULL, MAIN_TASK_STACK_SIZE, MAIN_TASK_PRIORITY, 0, 0, GPS_TASK_NAME);
-	// init AHRS
-	JY901_init();
+    //OS_CreateTask(gps_testTask,
+    //        NULL, NULL, MAIN_TASK_STACK_SIZE, MAIN_TASK_PRIORITY, 0, 0, GPS_TASK_NAME);
+	/**************************************************************/
+	// init i2c
+	I2C_Config_t config;
+
+    config.freq = I2C_FREQ_100K;
+    I2C_Init(I2C_JY901, config);
+	
 	// start data fuse
 	OS_CreateTask(position_estimator_testTask,
-            NULL, NULL, MAIN_TASK_STACK_SIZE, MAIN_TASK_PRIORITY, 0, 0, FUSE_TASK_NAME);
+            NULL, NULL, INAV_TASK_STACK_SIZE, INAV_TASK_PRIORITY, 0, 0, INAV_TASK_NAME);
 	
 	// handle event
     while(1)

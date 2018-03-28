@@ -16,6 +16,8 @@ struct map_projection_reference_s {
 };
 int map_projection_init(struct map_projection_reference_s *ref, double lat_0,
 				 double lon_0);
+int map_projection_project(const struct map_projection_reference_s *ref, double lat, double lon, float *x,
+				    float *y);
 
 
 #endif

@@ -1,9 +1,10 @@
 #include "inertial_filter.h"
+#include "integrated_nav.h"
 
 void inertial_filter_predict(float dt, float x[2], float acc)
 {
-	if (isfinte(dt)) {
-		if (!isfinte(acc)) {
+	if (isfinite(dt)) {
+		if (!isfinite(acc)) {
 			acc = 0.0f;
 		}
 
@@ -14,7 +15,7 @@ void inertial_filter_predict(float dt, float x[2], float acc)
 
 void inertial_filter_correct(float e, float dt, float x[2], int i, float w)
 {
-	if (isfinte(e) && isfinte(w) && isfinte(dt)) {
+	if (isfinite(e) && isfinite(w) && isfinite(dt)) {
 		float ewdt = e * w * dt;
 		x[i] += ewdt;
 
