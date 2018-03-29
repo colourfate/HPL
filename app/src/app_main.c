@@ -1,5 +1,6 @@
 #include <string.h>
 #include <stdio.h>
+#include <time.h>
 
 #include <api_os.h>
 #include <api_gps.h>
@@ -74,6 +75,8 @@ void GpsUpdate()
                 return;
             }
             GPS_Parse(tmp);
+			gps_ready = true;
+			Trace(1, "clock=%d", (int)(clock() / CLOCKS_PER_MSEC));
         }
     }
 }
@@ -179,7 +182,8 @@ void EventDispatch(API_Event_t* pEvent)
             {
                 Buffer_Puts(&gpsNmeaBuffer,pEvent->pParam1,pEvent->param1);
                 GpsUpdate();
-				gps_ready = true;
+				//gps_ready = true;
+				//Trace(1, "clock=%d", (int)(clock() / CLOCKS_PER_MSEC));
             }
             break;
         case API_EVENT_ID_UART_RECEIVED:

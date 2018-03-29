@@ -223,7 +223,9 @@ void position_estimator_testTask(void *pData)
 					}
 
 					// calculate index of estimated values in buffer
-					int est_i = buf_ptr - EST_BUF_SIZE;
+					// the max(0, ...) is to insure the PARAMS_DALAY_GPS is not littler than 0
+					// and the min(EST_BUF_SIZE, ..) is to insure the PARAMS_DALAY_GPS is not greater than EST_BUF_SIZE
+					int est_i = buf_ptr - 1 - min(EST_BUF_SIZE - 1, max(0, (int)(params.delay_gps )));
 					if (est_i < 0) {
 						est_i += EST_BUF_SIZE;
 					}
@@ -349,8 +351,7 @@ void position_estimator_testTask(void *pData)
 		}
 		*/
 		
-		// the calculate rate is 100Hz
-		OS_Sleep(500);	
+		OS_Sleep(1000/UPDATE_HZ);	
 	}
 }
 
