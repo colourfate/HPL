@@ -15,13 +15,14 @@
 #include "gps_parse.h"
 #include "integrated_nav.h"
 #include "JY901_i2c.h"
+#include "led.h"
 
 /*********************************************************************/
 /////////////////////////socket configuration////////////////////////
 // edit ip address and port
 // (you can get ip and port from online tcp debug tool: http://tt.ai-thinker.com:8000/ttcloud)
 #define SERVER_IP   "122.114.122.174"
-#define SERVER_PORT 33780
+#define SERVER_PORT 35403
 
 #define DNS_DOMAIN  "www.neucrack.com"
 #define RECEIVE_BUFFER_MAX_LENGTH 200
@@ -48,8 +49,6 @@ uint8_t tmp[1024];
 #define MAIN_TASK_NAME          "Send GPS to server"
 
 static HANDLE mainTaskHandle = NULL;
-
-static char gps_data[100] = {0};
 
 bool gps_ready = false;
 
@@ -182,8 +181,6 @@ void EventDispatch(API_Event_t* pEvent)
             {
                 Buffer_Puts(&gpsNmeaBuffer,pEvent->pParam1,pEvent->param1);
                 GpsUpdate();
-				//gps_ready = true;
-				//Trace(1, "clock=%d", (int)(clock() / CLOCKS_PER_MSEC));
             }
             break;
         case API_EVENT_ID_UART_RECEIVED:
@@ -202,6 +199,7 @@ void EventDispatch(API_Event_t* pEvent)
 }
 
 // socket init
+/*
 void Init()
 {
     receivedDataCount = 0;
@@ -230,6 +228,7 @@ void gps_testTask(void *pData)
 		OS_Sleep(5000);
     }
 }
+*/
 
 void app_MainTask(void *pData)
 {
@@ -237,9 +236,9 @@ void app_MainTask(void *pData)
 
 	/**************************************************************/
 	// init socket
-	/*
-	Init();
+	//Init();
 	// wait socket to connect
+	/*
 	while(socketFd == -1)
     {
         if(OS_WaitEvent(mainTaskHandle, (void**)&event, OS_TIME_OUT_WAIT_FOREVER))
@@ -250,7 +249,7 @@ void app_MainTask(void *pData)
             OS_Free(event);
         }
     }
-    */
+	*/
 	/**************************************************************/
 	// init GPS
     GPS_Open(NULL);
@@ -265,10 +264,13 @@ void app_MainTask(void *pData)
     config.freq = I2C_FREQ_100K;
     I2C_Init(I2C_JY901, config);
 	
-	// start data fuse
+	// start position estimation
 	OS_CreateTask(position_estimator_testTask,
             NULL, NULL, INAV_TASK_STACK_SIZE, INAV_TASK_PRIORITY, 0, 0, INAV_TASK_NAME);
-	
+	/***************************************************************/
+	// start led task
+	//OS_CreateTask(led_testTask,
+    //        NULL, NULL, LED_TASK_STACK_SIZE, LED_TASK_PRIORITY, 0, 0, LED_TASK_NAME);
 	// handle event
     while(1)
     {

@@ -3,7 +3,9 @@
 
 void inertial_filter_predict(float dt, float x[2], float acc)
 {
+
 	if (isfinite(dt)) {
+
 		if (!isfinite(acc)) {
 			acc = 0.0f;
 		}
@@ -11,6 +13,7 @@ void inertial_filter_predict(float dt, float x[2], float acc)
 		x[0] += x[1] * dt + acc * dt * dt / 2.0f;
 		x[1] += acc * dt;
 	}
+
 }
 
 void inertial_filter_correct(float e, float dt, float x[2], int i, float w)
