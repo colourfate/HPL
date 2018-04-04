@@ -32,62 +32,73 @@ double gps_dm_2_dd(double dm)
 }
 
 // Come from the PX4 position_estimator_inav_thread_main(),
-// which is a complementary filter for 3D position and velocity states
-// and has been deprecated in new PX4 Firmware
-void position_estimator_testTask(void *pData)
+// which is a complementary filter for 3D position and velocity states.
+// The position estimator has been deprecated in new PX4 Firmware.
+
+// Because of the 10K stack, we assign these variables in bss segment, not in stack.
+// calculation
+float q[4];
+float A[3][3];		// the attitude maxtix
+clock_t t_prev = 0;
+
+float x_est[2] = { 0.0f, 0.0f };	// pos, vel
+float y_est[2] = { 0.0f, 0.0f };	// pos, vel
+float x_est_prev[2], y_est_prev[2];
+
+
+float est_buf[EST_BUF_SIZE][3][2];
+float R_buf[EST_BUF_SIZE][3][3];
+float R_gps[3][3];					// rotation matrix for GPS correction moment
+
+uint8_t buf_ptr = 0;
+
+float corr_gps[3][2] = {
+	{ 0.0f, 0.0f },		// N (pos, vel)
+	{ 0.0f, 0.0f },		// E (pos, vel)
+	{ 0.0f, 0.0f },		// D (pos, vel)
+};
+float w_gps_xy = 1.0f;
+
+// GPS
+GPS_Information_t* gpsInfo;
+bool gps_valid = false; 		// GPS is valid
+bool ref_inited = false;		
+clock_t ref_init_start = 0;
+const clock_t ref_init_delay = 1000;	// wait for 1s after 3D fix
+struct map_projection_reference_s ref;
+
+static const float min_eph_epv = 2.0f;	// min EPH/EPV, used for weight calculation
+static const float max_eph_epv = 20.0f;	// max EPH/EPV acceptable for estimation
+
+float eph;
+float epv;
+
+// sensor
+float a[] = {0.0f, 0.0f, 0.0f};			// body frame
+float acc[] = { 0.0f, 0.0f, 0.0f };		// NED frame
+float acc_bias[] = { 0.0f, 0.0f, 0.0f };	// body frame
+struct SQ stcQ;
+struct SAcc stcAcc;
+// socket
+clock_t pub_last;
+
+void position_estimator_testTask()
 {
-	// calculation
-	float q[4];
-	float A[3][3];		// the attitude maxtix
-	clock_t t_prev = 0;
-	
-	float x_est[2] = { 0.0f, 0.0f };	// pos, vel
-	float y_est[2] = { 0.0f, 0.0f };	// pos, vel
-	float x_est_prev[2], y_est_prev[2];
+	/*
 	memset(x_est_prev, 0, sizeof(x_est_prev));
 	memset(y_est_prev, 0, sizeof(y_est_prev));
-	
-	float est_buf[EST_BUF_SIZE][3][2];
-	float R_buf[EST_BUF_SIZE][3][3];
-	float R_gps[3][3];					// rotation matrix for GPS correction moment
 	memset(est_buf, 0, sizeof(est_buf));
 	memset(R_buf, 0, sizeof(R_buf));
 	memset(R_gps, 0, sizeof(R_gps));
-	uint8_t buf_ptr = 0;
-	
-	float corr_gps[3][2] = {
-		{ 0.0f, 0.0f },		// N (pos, vel)
-		{ 0.0f, 0.0f },		// E (pos, vel)
-		{ 0.0f, 0.0f },		// D (pos, vel)
-	};
-	float w_gps_xy = 1.0f;
-
-	// GPS
-	GPS_Information_t* gpsInfo = Gps_GetInfo();
-	bool gps_valid = false; 		// GPS is valid
-	bool ref_inited = false;		
-	clock_t ref_init_start = 0;
-	const clock_t ref_init_delay = 1000;	// wait for 1s after 3D fix
-	struct map_projection_reference_s ref;
 	memset(&ref, 0, sizeof(ref));
-	
-	static const float min_eph_epv = 2.0f;	// min EPH/EPV, used for weight calculation
-	static const float max_eph_epv = 20.0f;	// max EPH/EPV acceptable for estimation
-
-	float eph = max_eph_epv;
-	float epv = 1.0f;
-
-	// sensor
-	float a[] = {0.0f, 0.0f, 0.0f};			// body frame
-	float acc[] = { 0.0f, 0.0f, 0.0f };		// NED frame
-	float acc_bias[] = { 0.0f, 0.0f, 0.0f };	// body frame
-	struct SQ stcQ;
-	struct SAcc stcAcc;
 	memset(&stcQ, 0, sizeof(stcQ));
 	memset(&stcAcc, 0, sizeof(stcAcc));
-
-	// socket
-	clock_t pub_last = clock() / CLOCKS_PER_MSEC;
+	*/
+	
+	gpsInfo = Gps_GetInfo();
+	eph = max_eph_epv;
+	epv = 1.0;
+	pub_last = clock() / CLOCKS_PER_MSEC;
 	
 	while(1){
 		// the start time of each loop, unit: ms
@@ -130,7 +141,7 @@ void position_estimator_testTask(void *pData)
 		}
 		acc[2] -= CONSTANTS_ONE_G;
 		//Trace(3, "NED ACC: %d %d %d", (int)(acc[0]*1000), (int)(acc[1]*1000), (int)(acc[2]*1000));
-
+		//Trace(2, "1");
 		// update gps data
 		if(gps_ready){
 			bool reset_est = false;
@@ -156,6 +167,7 @@ void position_estimator_testTask(void *pData)
 					Trace(3, "GPS signal found");
 				}
 			}
+			//Trace(2, "2");
 			// confirm the refer location
 			if(gps_valid){
 				double lat = my_atof(gpsInfo->latitude);
@@ -180,13 +192,6 @@ void position_estimator_testTask(void *pData)
 						x_est[1] = (float)vel_n_m_s;
 						y_est[0] = 0.0f;
 						y_est[1] = (float)vel_e_m_s;
-
-						/*
-						local_pos.ref_lat = lat;
-						local_pos.ref_lon = lon;
-						local_pos.ref_timestamp = t;
-						*/
-
 						// initialize projection
 						map_projection_init(&ref, lat, lon);
 						Trace(3, "init ref: lat=%d, lon=%d", (int)(lat*1000000), (int)(lon*1000000));
@@ -194,7 +199,7 @@ void position_estimator_testTask(void *pData)
 					}
 					
 				}
-
+				//Trace(2, "3");
 				// calculate the correction and weight for position
 				if(ref_inited){
 					// project GPS lat lon to plane
@@ -231,7 +236,7 @@ void position_estimator_testTask(void *pData)
 					w_gps_xy = min_eph_epv / MAX(min_eph_epv, gpsInfo->HDOP);
 					
 				}
-
+				//Trace(2, "4");
 			}else{
 				// no GPS lock
 				memset(corr_gps, 0, sizeof(corr_gps));
@@ -239,6 +244,7 @@ void position_estimator_testTask(void *pData)
 			}
 			gps_ready = false;
 		}
+		//Trace(2, "5");
 
 		// check for timeout on GPS topic
 		float dt = t_prev > 0 ? (t - t_prev) / 1000.0f : 0.0f;
@@ -277,7 +283,7 @@ void position_estimator_testTask(void *pData)
 			accel_bias_corr[1] -= corr_gps[1][0] * w_xy_gps_p * w_xy_gps_p;
 			accel_bias_corr[1] -= corr_gps[1][1] * w_xy_gps_v;
 		}
-		
+		//Trace(2, "6");
 		// transform error vector from NED frame to body frame
 		for (int i = 0; i < 3; i++) {
 			float c = 0.0f;
@@ -291,6 +297,8 @@ void position_estimator_testTask(void *pData)
 			}
 		}
 
+
+		//Trace(2, "7");
 		if(use_gps_xy){
 			// inertial filter prediction for position
 			inertial_filter_predict(dt, x_est, acc[0]);
@@ -323,10 +331,11 @@ void position_estimator_testTask(void *pData)
 			}
 		}else{
 			// gradually reset xy velocity estimates 
-			inertial_filter_correct(-x_est[1], dt, x_est, 1, PARAMS_W_XY_RES_V);
-			inertial_filter_correct(-y_est[1], dt, y_est, 1, PARAMS_W_XY_RES_V);
+			//inertial_filter_correct(-x_est[1], dt, x_est, 1, PARAMS_W_XY_RES_V);
+			//inertial_filter_correct(-y_est[1], dt, y_est, 1, PARAMS_W_XY_RES_V);
 		}
 
+		//Trace(2, "8");
 		// push current estimate to buffer
 		est_buf[buf_ptr][0][0] = x_est[0];
 		est_buf[buf_ptr][0][1] = x_est[1];
@@ -338,25 +347,27 @@ void position_estimator_testTask(void *pData)
 		if (buf_ptr >= EST_BUF_SIZE) {
 			buf_ptr = 0;
 		}
-
+		//Trace(2, "9");
 		// send the location to server
+
 		if(t > pub_last + PUB_INTERVAL){
 			pub_last = t;
 			double est_lat = 0, est_lon = 0;
 			map_projection_reproject(&ref, x_est[0], y_est[0], &est_lat, &est_lon);
 			Trace(3, "(x, y): (%d, %d)    (vx, vy): (%d, %d)", (int)(x_est[0]*10000), 
 				(int)(y_est[0]*10000), (int)(x_est[1]*10000), (int)(y_est[1]*10000));
-			Trace(3, "est GPS: %s %s", my_ftoa(est_lat), my_ftoa(est_lon));
+			//Trace(3, "est lat: %s", my_ftoa(est_lat));
+			//Trace(3, "est lon: %s", my_ftoa(est_lon));
 			//Trace(3, "est GPS: %d %d", (int)(est_lat*1000000), (int)(est_lon*1000000));
 			//Trace(3, "GPS: %s %s SPEED: %d W:%d", gpsInfo->latitude, gpsInfo->longitude,
 			//	(int)(gpsInfo->Speed*10000/3.6f), (int)(w_gps_xy*100));
 			// assign global viariable and wait to send.
-			//local_pos.lat = est_lat;
-			//local_pos.lon = est_lon;
-			//local_pos.gps_valid = gps_valid;
-			//local_pos.timestamp = t;
+			local_pos.lat = est_lat;
+			local_pos.lon = est_lon;
+			local_pos.gps_valid = gps_valid;
+			local_pos.timestamp = t;
 		}
-
+		//Trace(2, "10");
 		OS_Sleep(1000/UPDATE_HZ);	
 	}
 }

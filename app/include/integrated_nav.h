@@ -3,14 +3,14 @@
 #include <stdbool.h>
 #include <time.h>
 
-#define INAV_TASK_STACK_SIZE    (1024 * 30)		// 30K
-#define INAV_TASK_PRIORITY      0
-#define INAV_TASK_NAME "inertial navigation and position estimation"
+#define INAV_TASK_STACK_SIZE    (1024 * 10)		// 10K
+#define INAV_TASK_PRIORITY      1
+#define INAV_TASK_NAME "position estimation"
 
 #define CONSTANTS_ONE_G 9.80665f
 #define PI 3.141592654
 // The inav update rate is 20Hz and the buffer length is 40, so the buffer can store data within 2 second
-#define UPDATE_HZ		20
+#define UPDATE_HZ		2
 #define EST_BUF_SIZE 	40
 #define MIN_VALID_W 	0.00001f
 #define PUB_INTERVAL	5000 // the send interval is 5 second
@@ -27,7 +27,9 @@ struct location_position{
 	bool gps_valid;
 	clock_t timestamp;
 };
-void position_estimator_testTask(void *pData);
+extern struct location_position local_pos;
+
+void position_estimator_testTask();
 int isfinite(float v);
 
 

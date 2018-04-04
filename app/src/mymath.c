@@ -4,6 +4,7 @@
 #include <cs_types.h>
 #include <string.h>
 #include <stdio.h>
+#include <api_debug.h>
 #include "mymath.h"
 
 #define TAN_MAP_RES     0.003921569f     /* (smallest non-zero value in table) */
@@ -259,20 +260,27 @@ float my_atof(char *str)
 }
 
 
-char str_buf[10];
-char *my_ftoa(const float x)
+char *my_ftoa(double x)
 {
+	static char str_buf[20];
+	int i, c = 0;
 	memset(str_buf, 0, sizeof(str_buf));
-	int d;
-	float m;
-	d = (int)x;
-	m = x - d;
-	do{
-		m *= 10;
-	}while((int)m % 10 != 0);
-	sprintf(str_buf, "%d.%d", d, (int)m/10);
+	while(x > 1){
+		x /= 10;
+		c++;
+	}
+	for(i=0; i<16; i++){
+		if(i == c){
+			str_buf[i] = '.';
+			continue;
+		}
+		x *= 10;
+		str_buf[i] = (int)x + '0';
+		x -= (int)x;
+	}
 	return str_buf;
 }
+
 
 
 

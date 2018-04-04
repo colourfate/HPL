@@ -14,8 +14,6 @@ double my_cos(double rad);
 float my_sqrt(float number);
 REAL fast_atan2(REAL y, REAL x);
 float my_atof(char *str);
-char *my_ftoa(const float x);
-
-
+char *my_ftoa(const double x);
 
 #endif

@@ -16,26 +16,10 @@
 #include "integrated_nav.h"
 #include "JY901_i2c.h"
 #include "led.h"
+#include "socket.h"
 
-/*********************************************************************/
-/////////////////////////socket configuration////////////////////////
-// edit ip address and port
-// (you can get ip and port from online tcp debug tool: http://tt.ai-thinker.com:8000/ttcloud)
-#define SERVER_IP   "122.114.122.174"
-#define SERVER_PORT 35403
-
-#define DNS_DOMAIN  "www.neucrack.com"
-#define RECEIVE_BUFFER_MAX_LENGTH 200
-/*********************************************************************/
-// socket
-int socketFd = -1;
-int socketFd2 = -1;
-uint8_t buffer[RECEIVE_BUFFER_MAX_LENGTH];
-int receivedDataCount = -1;
 /*********************************************************************/
 // GPS
-#define GPS_TASK_NAME "read GPS data"
-
 #define GPS_DATA_BUFFER_MAX_LENGTH 2048
 
 Buffer_t gpsNmeaBuffer;
@@ -45,12 +29,13 @@ uint8_t tmp[1024];
 /****************************** APP ***********************************/
 // APP
 #define MAIN_TASK_STACK_SIZE    (2048 * 2)
-#define MAIN_TASK_PRIORITY      0
+#define MAIN_TASK_PRIORITY      1
 #define MAIN_TASK_NAME          "Send GPS to server"
 
 static HANDLE mainTaskHandle = NULL;
 
 bool gps_ready = false;
+bool conn_status = false;
 
 /**********************************************************************/
 
@@ -113,33 +98,16 @@ void EventDispatch(API_Event_t* pEvent)
 
         case API_EVENT_ID_NETWORK_ACTIVATED:
             Trace(2,"network activate success");
-            //Start DNS test
-            memset(buffer,0,sizeof(buffer));
-            DNS_Status_t dnsRet = DNS_GetHostByName(DNS_DOMAIN,buffer);
-            if(dnsRet == DNS_STATUS_OK)
-            {
-                Trace(2,"DNS get ip address from domain success(return),domain:%s,ip:%s",DNS_DOMAIN,buffer);
-            }
-            else if(dnsRet == DNS_STATUS_ERROR)
-            {
-                Trace(2,"DNS get ip address error(return)!!!");
-            }
-            //Start connect tcp server
-            socketFd = Socket_TcpipConnect(TCP,SERVER_IP,SERVER_PORT);
-            Trace(2,"connect tcp server,socketFd:%d",socketFd);
+            sem = 1;
             break;
 
         case API_EVENT_ID_SOCKET_CONNECTED:
-            Socket_TcpipWrite(pEvent->param1,"hello...test string\n",strlen("hello...test string\n"));
-            Trace(2,"socket %d send %d bytes data to server:%s",pEvent->param1, strlen("hello...test string\n"),"hello...test string\n");
-			// set the socket status to ready
-			//socket_status.ready = 1;
-			break;
-
+			conn_status = true;
+            sem = 1;
+            break;
         case API_EVENT_ID_SOCKET_SENT:
         {
-            int fd = pEvent->param1;
-            Trace(2,"socket %d send data complete",fd);
+            sem = 1;
             break;
         }
         case API_EVENT_ID_SOCKET_RECEIVED:
@@ -155,25 +123,19 @@ void EventDispatch(API_Event_t* pEvent)
         {
             int fd = pEvent->param1;
             Trace(2,"socket %d closed",fd);
-			socketFd = -1;
+            sem = 1;
+			conn_status = false;
             break;
         }
         case API_EVENT_ID_SOCKET_ERROR:
         {
             int fd = pEvent->param1;
             Trace(2,"socket %d error occurred,cause:%d",fd,pEvent->param2);
-			socketFd = -1;
+            errorCode = pEvent->param2;
+            sem = 1;
+			conn_status = false;
             break;
         }
-        case API_EVENT_ID_DNS_SUCCESS:
-            Trace(2,"DNS get ip address from domain success(event),domain:%s,ip:%s",pEvent->pParam1,pEvent->pParam2);
-            break;
-
-        case API_EVENT_ID_DNS_ERROR:
-            Trace(2,"DNS get ip address error(event)!!!");
-			socketFd = -1;
-            break;
-
 		// GPS event
 		case API_EVENT_ID_GPS_UART_RECEIVED:
             // Trace(1,"received GPS data,length:%d, data:%s,flag:%d",pEvent->param1,pEvent->pParam1,flag);
@@ -198,35 +160,17 @@ void EventDispatch(API_Event_t* pEvent)
     }
 }
 
-// socket init
 /*
-void Init()
-{
-    receivedDataCount = 0;
-}
+#define SLEEP_TASK_STACK_SIZE (1024*10)
+#define SLEEP_TASK_PRIORITY	(0)
+#define SLEEP_TASK_NAME	"sleep"
 
-void gps_testTask(void *pData)
+void sleep_testTask(void *pData)
 {
-    GPS_Information_t* gpsInfo = Gps_GetInfo();
-    uint8_t strTmp[100];
-	uint8_t length = 0;
-
-    while(1)
-    {
-        //UART_Write(UART1,tmp,strlen(tmp));
-        memset(strTmp,0,sizeof(strTmp));
-        Trace(1,"GPS fix:%d, BDS fix:%d, Latitude:%s, Longitude:%s",
-			gpsInfo->fixGPS, gpsInfo->fixBDS, gpsInfo->latitude, gpsInfo->longitude);
-		
-		// socketFd is set in API_EVENT_ID_NETWORK_ACTIVATED
-		if(socketFd != -1){
-			length = sprintf(gps_data, "GPS fix:%d, BDS fix:%d, Latitude:%s, Longitude:%s",
-				gpsInfo->fixGPS, gpsInfo->fixBDS, gpsInfo->latitude, gpsInfo->longitude);
-			Socket_TcpipWrite(socketFd, gps_data, length);
-			Trace(1, "send gps data to server\n");
-		}
-		OS_Sleep(5000);
-    }
+	while(1){
+		Trace(3, "10");
+		OS_Sleep(50);
+	}
 }
 */
 
@@ -236,41 +180,27 @@ void app_MainTask(void *pData)
 
 	/**************************************************************/
 	// init socket
-	//Init();
-	// wait socket to connect
-	/*
-	while(socketFd == -1)
-    {
-        if(OS_WaitEvent(mainTaskHandle, (void**)&event, OS_TIME_OUT_WAIT_FOREVER))
-        {
-            EventDispatch(event);
-            OS_Free(event->pParam1);
-            OS_Free(event->pParam2);
-            OS_Free(event);
-        }
-    }
-	*/
+	CreateSem(&sem);
+    OS_CreateTask(socketTestTask,
+        NULL, NULL, SOCKET_TASK_STACK_SIZE, SOCKET_TASK_PRIORITY, 0, 0, SOCKET_TASK_NAME);
 	/**************************************************************/
 	// init GPS
     GPS_Open(NULL);
     Buffer_Init(&gpsNmeaBuffer,gpsDataBuffer,GPS_DATA_BUFFER_MAX_LENGTH);
-	// send data
-    //OS_CreateTask(gps_testTask,
-    //        NULL, NULL, MAIN_TASK_STACK_SIZE, MAIN_TASK_PRIORITY, 0, 0, GPS_TASK_NAME);
 	/**************************************************************/
 	// init i2c
 	I2C_Config_t config;
-
     config.freq = I2C_FREQ_100K;
     I2C_Init(I2C_JY901, config);
-	
 	// start position estimation
 	OS_CreateTask(position_estimator_testTask,
-            NULL, NULL, INAV_TASK_STACK_SIZE, INAV_TASK_PRIORITY, 0, 0, INAV_TASK_NAME);
+           NULL, NULL, INAV_TASK_STACK_SIZE, INAV_TASK_PRIORITY, 0, 0, INAV_TASK_NAME);
+	//OS_CreateTask(sleep_testTask,
+    //       NULL, NULL, SLEEP_TASK_STACK_SIZE, SLEEP_TASK_PRIORITY, 0, 0, SLEEP_TASK_NAME);
 	/***************************************************************/
 	// start led task
-	//OS_CreateTask(led_testTask,
-    //        NULL, NULL, LED_TASK_STACK_SIZE, LED_TASK_PRIORITY, 0, 0, LED_TASK_NAME);
+	OS_CreateTask(led_testTask,
+            NULL, NULL, LED_TASK_STACK_SIZE, LED_TASK_PRIORITY, 0, 0, LED_TASK_NAME);
 	// handle event
     while(1)
     {
