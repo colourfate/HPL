@@ -31,6 +31,12 @@ void led_testTask()
 	// init GPIO27 and 28
 	GPIO_Init(led_gps);
 	GPIO_Init(led_net);
+	// blink led when start up
+	GPIO_SetLevel(led_gps, GPIO_LEVEL_HIGH);
+	GPIO_SetLevel(led_net, GPIO_LEVEL_HIGH);
+	OS_Sleep(1000);
+	GPIO_SetLevel(led_gps, GPIO_LEVEL_LOW);
+	GPIO_SetLevel(led_net, GPIO_LEVEL_LOW);
 
 	// ADC
 	uint16_t value = 0, mV = 0;

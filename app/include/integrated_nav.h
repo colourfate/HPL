@@ -13,11 +13,8 @@
 #define UPDATE_HZ		2
 #define EST_BUF_SIZE 	40
 #define MIN_VALID_W 	0.00001f
-#define PUB_INTERVAL	5000 // the send interval is 5 second
+#define PUB_INTERVAL	500 // the send interval is 5 second
 
-#define PARAMS_W_XY_P 1
-#define PARAMS_W_XY_V 0.5
-#define PARAMS_W_ACC_BIAS 0.064
 #define PARAMS_W_XY_RES_V 1
 #define PARAMS_DALAY_GPS (1*UPDATE_HZ)	// GPS delay = 1 s
 

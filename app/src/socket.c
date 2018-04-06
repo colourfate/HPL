@@ -11,8 +11,8 @@
 /*******************************************************************/
 /////////////////////////socket configuration////////////////////////
 
-#define DNS_DOMAIN  "122.114.122.174"
-#define SERVER_PORT 37764
+#define DNS_DOMAIN  "120.78.167.211"
+#define SERVER_PORT 10086
 #define RECEIVE_BUFFER_MAX_LENGTH 200
 /*******************************************************************/
 
@@ -107,6 +107,7 @@ int data_packet(char *s, double lat, double lon, bool gps)
 	}else{
 		*s++ = '0';
 	}
+	*s++ = '\n';
 	*s = '\0';
 	return (int)(s - p);
 }

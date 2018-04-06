@@ -18,6 +18,10 @@
 #include "gps_parse.h"
 #include "mymath.h"
 
+#define PARAMS_W_XY_P 0.5f
+#define PARAMS_W_XY_V 10.0f
+#define PARAMS_W_ACC_BIAS 0.064f
+
 struct location_position local_pos;
 extern bool gps_ready;
 extern int socketFd;
@@ -27,8 +31,8 @@ extern int socketFd;
 double gps_dm_2_dd(double dm)
 {
 	int d = (int)(dm / 100.0f);
-	double m = dm / 100.0f - d;
-	return d+m/60.0f;
+	double m = dm - d * 100;;
+	return d+m/60.0;
 }
 
 // Come from the PX4 position_estimator_inav_thread_main(),
@@ -64,7 +68,7 @@ GPS_Information_t* gpsInfo;
 bool gps_valid = false; 		// GPS is valid
 bool ref_inited = false;		
 clock_t ref_init_start = 0;
-const clock_t ref_init_delay = 1000;	// wait for 1s after 3D fix
+const clock_t ref_init_delay = 0;	// wait for 1s after 3D fix
 struct map_projection_reference_s ref;
 
 static const float min_eph_epv = 2.0f;	// min EPH/EPV, used for weight calculation
@@ -170,10 +174,13 @@ void position_estimator_testTask()
 			//Trace(2, "2");
 			// confirm the refer location
 			if(gps_valid){
+				//Trace(3, "GPS: %s %s", gpsInfo->latitude, gpsInfo->longitude);
 				double lat = my_atof(gpsInfo->latitude);
 				double lon = my_atof(gpsInfo->longitude);
 				lat = gps_dm_2_dd(lat);
 				lon = gps_dm_2_dd(lon);
+				//Trace(3, "LAT: %s", my_ftoa(lat));
+				//Trace(3, "LON: %s", my_ftoa(lon));
 				double track_rad = gpsInfo->Course * PI / 180.0;
 				double vel_n_m_s = gpsInfo->Speed / 3.6 * my_cos(track_rad);	// N
 				double vel_e_m_s = gpsInfo->Speed / 3.6 * my_sin(track_rad);	// E
@@ -356,8 +363,8 @@ void position_estimator_testTask()
 			map_projection_reproject(&ref, x_est[0], y_est[0], &est_lat, &est_lon);
 			Trace(3, "(x, y): (%d, %d)    (vx, vy): (%d, %d)", (int)(x_est[0]*10000), 
 				(int)(y_est[0]*10000), (int)(x_est[1]*10000), (int)(y_est[1]*10000));
-			//Trace(3, "est lat: %s", my_ftoa(est_lat));
-			//Trace(3, "est lon: %s", my_ftoa(est_lon));
+			Trace(3, "pos: %d %d, vel: %d %d", (int)(corr_gps[0][0]*10000), (int)(corr_gps[1][0]*10000), 
+				(int)(corr_gps[0][1]), (int)(corr_gps[1][1]));
 			//Trace(3, "est GPS: %d %d", (int)(est_lat*1000000), (int)(est_lon*1000000));
 			//Trace(3, "GPS: %s %s SPEED: %d W:%d", gpsInfo->latitude, gpsInfo->longitude,
 			//	(int)(gpsInfo->Speed*10000/3.6f), (int)(w_gps_xy*100));
